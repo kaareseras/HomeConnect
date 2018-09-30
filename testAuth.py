@@ -3,6 +3,7 @@ from flask import Flask, request, redirect, session, url_for
 from flask.json import jsonify
 import sseclient
 import os
+import mpu.io
 
 app = Flask(__name__)
 
@@ -46,13 +47,21 @@ def demo():
     using an URL with a few key OAuth parameters.
     """
 
-    github = OAuth2Session(client_id, scope=scope)
-    authorization_url, state = github.authorization_url(authorization_base_url)
+    #Test if token exists
+    try:
+        token = mpu.io.read('example.json')
+        return redirect(url_for('.events'))
+    except:
+        
+        data = mpu.io.read('example.json')
 
-    # State is used to prevent CSRF, keep this for later.
-    stateStore = state
-    
-    return redirect(authorization_url)
+        github = OAuth2Session(client_id, scope=scope)
+        authorization_url, state = github.authorization_url(authorization_base_url)
+
+        # State is used to prevent CSRF, keep this for later.
+        stateStore = state
+        
+        return redirect(authorization_url)
 
 
 # Step 2: User authorization, this happens on the provider.
@@ -78,7 +87,11 @@ def callback():
 
     session['oauth_token'] = token
 
-    return redirect(url_for('.home'))
+    
+
+    mpu.io.write('example.json', token)
+
+    return redirect(url_for('.events'))
 
 
 @app.route("/home", methods=["GET"])
@@ -98,22 +111,33 @@ def home():
 
 @app.route("/events", methods=["GET"])
 def events():
-
     import requests
+    import sseclient
+    
     url = 'https://simulator.home-connect.com/api/homeappliances/SIEMENS-HCS02DWH1-49C805BCCF4120/events'
        
-    response = requests.get(url, stream=True)
-    print("response:" + response)
+
+    #token = session['oauth_token']
+    token = mpu.io.read('example.json')
+
+
+    #myToken = access_token
+    myUrl = url
+    head = {'Authorization': 'Bearer 225852941EB8953E17EED768FDAADB1116C5EA8D095E78FD086E1E80AB130DC7', 'Accept':'text/event-stream'}
+    response = requests.get(myUrl, headers=head, stream=True)
+
     client = sseclient.SSEClient(response)
     for event in client.events():
-        print(event.data)
+        try:
+            print(event.data)
+        except:
+            pass
+
+    return jsonify(token)
 
 if __name__ == "__main__":
     # This allows us to use a plain HTTP callback
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = "1"
 
     app.secret_key = os.urandom(24)
-
-    
-    
     app.run(debug=True)
